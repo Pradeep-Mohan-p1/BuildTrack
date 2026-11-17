@@ -1,4 +1,4 @@
-export default function StatCard({ title, value, change, trend = 'up', icon: Icon, tone = 'blue' }) {
+export default function StatCard({ title, value, change, helperText, trend = 'up', icon: Icon, tone = 'blue' }) {
   const toneClasses = {
     blue: 'bg-blue-50 text-blue-600',
     green: 'bg-emerald-50 text-emerald-600',
@@ -17,12 +17,19 @@ export default function StatCard({ title, value, change, trend = 'up', icon: Ico
           {Icon ? <Icon className="h-5 w-5" /> : null}
         </div>
       </div>
-      <div className="mt-4 flex items-center gap-2 text-sm">
-        <span className={`font-medium ${trend === 'down' ? 'text-red-500' : 'text-emerald-600'}`}>
-          {change}
-        </span>
-        <span className="text-slate-400">vs last month</span>
-      </div>
+      {change || helperText ? (
+        <div className="mt-4 flex items-center gap-2 text-sm">
+          {change ? (
+            <>
+              <span className={`font-medium ${trend === 'down' ? 'text-red-500' : 'text-emerald-600'}`}>
+                {change}
+              </span>
+              <span className="text-slate-400">vs last month</span>
+            </>
+          ) : null}
+          {helperText ? <span className="text-slate-400">{helperText}</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

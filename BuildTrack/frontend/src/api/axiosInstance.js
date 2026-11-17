@@ -1,26 +1,20 @@
 import axios from 'axios';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const publicEndpoints = ['/auth/login', '/auth/register', '/users/register'];
 
 const api = axios.create({
-  baseURL: `${baseURL}/api/v1`,
+  baseURL: `${baseURL.replace(/\/+$/, '')}/api/v1`,
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
 api.interceptors.request.use((config) => {
-  const sessionValue = sessionStorage.getItem('buildtrack_auth');
+  const token = sessionStorage.getItem('buildtrack_token');
 
-  if (sessionValue) {
-    try {
-      const { email, password } = JSON.parse(sessionValue);
-      if (email && password) {
-        config.headers.Authorization = `Basic ${btoa(`${email}:${password}`)}`;
-      }
-    } catch (error) {
-      console.error('Failed to read auth session:', error);
-    }
+  if (token && !publicEndpoints.includes(config.url)) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   return config;
@@ -29,12 +23,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 403) {
-      console.warn('Forbidden: backend rejected the action.');
-    }
+    const requestUrl = error.config?.url || '';
+    const isPublicRequest = publicEndpoints.some((endpoint) => requestUrl.endsWith(endpoint));
 
-    if (error.response?.status === 401) {
-      console.warn('Unauthorized: please check your credentials.');
+    if (error.response?.status === 401 && !isPublicRequest) {
+      sessionStorage.removeItem('buildtrack_token');
+      window.dispatchEvent(new Event('buildtrack:unauthorized'));
     }
 
     return Promise.reject(error);

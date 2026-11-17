@@ -2,32 +2,34 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { getCurrentUser, loginUser, registerUser as registerApi } from '../api/authApi';
 
 const AuthContext = createContext(null);
+const TOKEN_STORAGE_KEY = 'buildtrack_token';
+const LEGACY_SESSION_KEY = 'buildtrack_auth';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const persistSession = useCallback((email, password) => {
-    sessionStorage.setItem('buildtrack_auth', JSON.stringify({ email, password }));
+  const persistSession = useCallback((token) => {
+    sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
   }, []);
 
   const clearSession = useCallback(() => {
-    sessionStorage.removeItem('buildtrack_auth');
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_SESSION_KEY);
   }, []);
 
   const refreshUser = useCallback(async (email, password) => {
     try {
       setError('');
       const response = await loginUser(email, password);
-      const profile = response.data?.user || response.data || { email, role: 'EMPLOYEE' };
-      const normalizedUser = {
-        ...profile,
-        email: profile.email || email,
-        role: profile.role || 'EMPLOYEE'
-      };
+      const { token, user: normalizedUser } = response.data;
+      if (!token || !normalizedUser) {
+        throw new Error('The authentication response did not include a token and user profile.');
+      }
+
+      persistSession(token);
       setUser(normalizedUser);
-      persistSession(email, password);
       return normalizedUser;
     } catch (err) {
       setUser(null);
@@ -62,18 +64,17 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const loadSession = async () => {
-      const stored = sessionStorage.getItem('buildtrack_auth');
-      if (!stored) {
+      const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      sessionStorage.removeItem(LEGACY_SESSION_KEY);
+      if (!token) {
         setIsLoading(false);
         return;
       }
 
       try {
-        const { email, password } = JSON.parse(stored);
-        if (email && password) {
-          await refreshUser(email, password);
-        }
-      } catch (error) {
+        const response = await getCurrentUser();
+        setUser(response.data);
+      } catch {
         clearSession();
       } finally {
         setIsLoading(false);
@@ -81,7 +82,18 @@ export const AuthProvider = ({ children }) => {
     };
 
     loadSession();
-  }, [clearSession, refreshUser]);
+  }, [clearSession]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      clearSession();
+      setUser(null);
+      setError('Your session expired. Sign in again to continue.');
+    };
+
+    window.addEventListener('buildtrack:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('buildtrack:unauthorized', handleUnauthorized);
+  }, [clearSession]);
 
   const value = useMemo(() => ({
     user,
